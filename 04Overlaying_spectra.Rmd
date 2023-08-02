@@ -1,0 +1,138 @@
+---
+title: "04Overlaying_spectra"
+output: html_document
+date: "2023-07-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Overlaying Spectra
+
+QUESTIONS
+
+-   The prepocessing steps are being done over, and done together with the new spectra mainly to ensure they are preprocessed similarly
+
+NOTES
+
+-   Overlaying to check whether model
+
+    -   model = developed using the 100 with wet chem
+
+    -   cleaned_raw is new data without wet chem.cf
+
+-   One hope (and almost assumption) is that soil IR and biochar IR components peak similarly - the way to start validating this is using the 04Overlaying_spectra script
+
+-   before the PLS script- you could be building a model, or building and predicting.
+
+    -   If the former, take out one of the datasets
+
+-   The binding is just to ensure the model and the data being analyzed using the model are preprocessed similarly - they get separated at some point 
+
+```{r}
+library(prospectr)
+library(ggplot2)
+library(dplyr)
+library(reshape)
+
+####################### Read model data and preprocess #########################
+master<- read.csv("model-raw_spectra.csv")[,-c(2:17)]
+master[1:5,1:5]
+
+raw0 <- read.csv("Cleaned_Raw_spectra_training.csv") # this would in actually the new data without wet. hem data 
+raw0[1:5,1:5]
+
+#Bind model and new data
+nwraw0 <- bind_rows(master,raw0)
+length(unique(nwraw0$SSN))
+################################################################################
+
+##################################### Spectra pre-treatment ###################
+#remove the CO2 region from all data
+wavenumbers <- round(as.numeric(substr(colnames(nwraw0[,-1]),2,100)),1)
+
+colnames(nwraw0) <- c("SSN", wavenumbers)
+
+co2 <- which(wavenumbers < 2380 & wavenumbers > 2350) # Get co2 bands
+nwraw0 <- nwraw0[,-c(co2+1)]
+dim(nwraw0)
+nwraw0[1:5,1:5]
+
+#SavitzkyGolay pretreatment
+spec_der<-as.data.frame(savitzkyGolay(nwraw0[,-1], w=17, p=2, m=1))
+
+#Mean-centering function
+center_colmeans <- function(x) {
+  xcenter = colMeans(x)
+  x - rep(xcenter, rep.int(nrow(x), ncol(x)))
+}
+
+
+#Mean-centering
+spec_der.mc_trt<-center_colmeans(spec_der)
+
+spec_trt<-bind_cols(SSN=nwraw0$SSN,spec_der.mc_trt)
+
+
+#Plot PCA scores plot overlay
+dsnv <- spec_trt
+
+pcs <- prcomp(dsnv[,-1])
+
+pcss <- pcs$x[,1:10]
+
+pcss[1:6,]
+
+plot(pcss)
+
+calib <- dim(master)[1]
+
+points(pcss[1:calib,1:2], col = "red")
+
+points(pcss[-c(1:calib),1:2], col = "blue")
+
+var <- round(summary(pcs)$importance[2,] * 100, 1)
+
+scores <- cbind("Calib",as.data.frame(pcs$x[,1:5])) # get first 5 principal components
+
+names(scores) <- c("set", colnames(scores[,-1]))
+
+scores <- as.matrix(scores)
+
+scores[-c(1:calib),1] <- "New samples"
+
+scores <- as.data.frame(scores)
+
+write.csv(scores, file = "./Calib and Pred scores.csv", row.names = FALSE)
+
+scores <- read.csv("./Calib and Pred scores.csv")
+
+#sp <- sp +  labs(color = "set")
+sp <- ggplot(scores, aes(x = PC1, y =PC2, colour = set)) +
+  
+  geom_point(size = 0.8, alpha = 0.85 ) +
+  
+  ggtitle("Calibration PCA scores plot") +
+  
+  
+  xlab(paste0("PC1 explains ", var[1], "% total variance")) +
+  
+  ylab(paste0("PC2 explains ", var[2], "% total variance")) +
+  
+  theme_bw() +
+  
+  theme(
+    plot.background = element_blank()
+    ,panel.grid.major = element_blank()
+    ,panel.grid.minor = element_blank()
+  )
+sp <- sp + theme(plot.title = element_text(hjust = 0.5))
+
+sp <- sp + scale_color_manual(values =c("brown","orange"))
+
+sp
+
+ggsave(filename  = "./Soils_scores.png", height = 6, width = 6,sp)
+
+```

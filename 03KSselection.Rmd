@@ -1,0 +1,44 @@
+---
+title: "03KSselection"
+output: html_document
+date: "2023-07-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Kennard Stone Selection
+
+TO DO
+
+-   Read about the principles of KS selection
+
+```{r}
+#read your spectral data
+library(prospectr)
+spectra=read.csv("/Users/soils/Library/CloudStorage/OneDrive-CIFOR-ICRAF/Documents/0All_Training/Spectroscopy Data Training-17th May 2023/Data/Cleaned_Raw_spectra.csv")
+
+#Use only when reading Raw_spectra file that was not cleaned
+#spectra<-spectra[,-2:-17]
+
+library("stringr")  
+names(spectra)=str_sub(names(spectra),2)
+names(spectra)[1]<-"SSN"
+rownames(spectra)<-spectra$SSN
+spect<-spectra[,-1]
+
+#KennardStone selection
+sel <- kenStone(spect, k =30, pc = .99)                       
+plot(sel$pc[, 1:2], xlab = "PC1", ylab = "PC2")
+points(sel$pc[sel$model, 1:2], pch = 19, col = 2)
+
+#for extracting purposes
+indexingorder<-seq(1, length(spectra[,1]))
+namecreation<-data.frame(indexingorder, spectra$SSN)
+nameofselected<-namecreation[is.element(namecreation$indexingorder,sel$model),]
+write.csv(nameofselected,"selectedsamples.csv",row.names = F)
+getwd()
+
+
+```

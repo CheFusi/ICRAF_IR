@@ -1,0 +1,415 @@
+---
+title: "Bruker OPUS Files Conversion"
+author: | 
+  | World Agroforestry Centre (ICRAF)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reticulate)
+suppressMessages(library(ggplot2))
+suppressMessages(library(reshape))
+suppressMessages(library(prospectr))
+#use_python("/usr/local/bin/python3")
+use_python("/Library/Frameworks/Python.framework/Versions/3.10/bin/python3")
+#Sys.setenv(RETICULATE_PYTHON = "/Library/Frameworks/Python.framework/Versions/3.9/bin/python3")
+py_config()
+```
+
+\newpage
+
+# Converting OPUS files into csv format
+
+This writeup is for demonstrating use of a simple script for converting Bruker OPUS files scanned using any of the Bruker Optics spectrometers: Alpha-II, Alpha (Kbr and ZnSe), MPA and HTS-xt into a csv file or text file. The script is written in Python and can be excuted directly within Python or using reticulate r-package. The output of the conversion, is a csv file can be read/imported into other programs like Microsoft Excel, R, Python, or other statistical software for further processing.
+
+The script is very fast and can convert \~ 10,000 OPUS files in under 2 minutes using a standard PC.
+
+The python script is being run from R software the script via using the reticulate r-package in this r-markdown file (rmd). This rmd provides visualization of the converted spectra in form of spectral signatures and a Principal Components (PCA) scores plot.
+
+# Output file
+
+The output table obtained is in two parts:\
+1. Columns 1 to 17 contains spectral scanning metadata\
+2: The remaining columns with actual recorded absorbances.
+
+Note: The user can decide to harmonise the spectra with those of ICRAF spectral library - the default setting.
+
+If running the script in python is prefered the code can be accessed from a shared dropbox folder [here](https://www.dropbox.com/sh/vgwm4lygt0yq4l2/AABxL0qtqcQp27Qy45Jr-W7Ka?dl=0). Ensure the path directory with the Bruker files is correctly specified.
+
+# Requirements:
+
+1.  Download and install python for your OS from <https://www.python.org/downloads/>.\
+2.  In R, install packages reticulate, ggplot2, reshape and prospectr.
+
+# Download demonstration data to use for testing working of this script.
+
+OPUS files with spectra scanned on ICRAF's Alpha ZnSe spectrometer used for this demonstration are downloadable from [this](https://www.dropbox.com/sh/1wt36tn3y2xp5q8/AACn_flmPj7RDhlIo_Lsj7s_a?dl=0) folder labelled Spectral.
+
+To run the script provide a full path name with the opus files to be converted in line 70.
+
+\pagebreak
+
+```{python, echo = FALSE, output= FALSE}
+
+import opusFC
+import time
+start_time = time.time()
+import os
+import numpy
+import pandas as pd
+import csv
+import glob
+import datetime
+import scipy as sp
+from scipy import interpolate
+import numpy as np
+
+# Change current working directory to where OPUS files are stored in your computer
+
+os.chdir("/Users/soliverchefusi/Library/CloudStorage/OneDrive-Personal/R/ICRAF&Lehmann/ICRAF_IR/ICRAF_IR_R_Project/Test_Spectra/Test_369.GGSM _fter_Incubation.ZnSe")
+# Check currect working directory
+
+cwd = os.getcwd()
+
+file_list = glob.glob(cwd + "/*.[0-9]")
+```
+
+```{python, echo = FALSE, output= FALSE}
+
+# Loop through files in file_list
+
+SNM = []
+INS = []
+DAT = []
+TIM = []
+EXP = []
+DUR = []
+CNM = []
+RES = []
+ZFF = []
+NPT = []
+LWN = []
+LXV = []
+FXV = []
+minY = []
+maxY = []
+
+# loop through all files
+
+count = 0
+
+for f in file_list:
+    try:
+
+        dbs = opusFC.listContents(f)
+
+        for pos, tupl in enumerate(dbs):
+
+            if tupl[0] == 'AB':
+                count += 1
+                #print(count)
+                #print(pos)
+
+                data = opusFC.getOpusData(f, dbs[pos])
+                #print(data.parameters)
+
+                SNM.append(data.parameters['SNM'])
+                INS.append(data.parameters['INS'])
+                DAT.append(data.parameters['DAT'])
+                TIM.append(data.parameters['TIM'])
+                DUR.append(data.parameters['DUR'])
+                CNM.append(data.parameters['CNM'])
+                RES.append(data.parameters['RES'])
+                ZFF.append(data.parameters['ZFF'])
+                NPT.append(data.parameters['NPT'])
+                LWN.append(data.parameters['LWN'])
+                FXV.append(data.parameters['FXV'])
+                LXV.append(data.parameters['LXV'])
+                minY.append(data.minY)
+                maxY.append(data.maxY)
+
+                continue
+
+    except ValueError:
+        print('Doesnt have AB Block', f)
+        print('This is non opus', f)
+        continue
+
+varnames = 'SNM', 'Instrument', 'Scan_date', "Time", "Duration", "Operator", "Resolution", "Zero_filling_Factor", "Number_points", "Laser_Wavenumber", "Wavenumber_one", "Wavenumber_last", "Min_absorbance", "Max_Absorbance"
+
+#DAT = datetime.datetime.strptime(DAT, "%Y-%m-%d")
+
+metadata1 = numpy.vstack((SNM,INS, DAT, TIM, DUR, CNM, RES, ZFF, NPT, LWN, FXV, LXV, minY, maxY)).T
+
+metadata = pd.DataFrame(metadata1, columns=varnames)
+```
+
+```{python, echo = FALSE, output= FALSE}
+
+############################### DROP TIME #########################################
+
+met = (metadata['Time'])  # pick time
+#print met
+
+df = pd.DataFrame(met.str.split("[)(]").tolist())  # remove parenthesis from time column values
+renam = df.rename( columns={0: "Time",1: "Zone", 2:"Empty"})
+
+dropEmpty = renam.drop(['Empty'], axis=1)
+#print dropEmpty
+
+dropTm = metadata.drop(['Time'], axis=1)
+#print dropTm
+
+dff = dropEmpty.join(dropTm,how="right", sort=True)
+#print dff
+
+cols = list(dff.columns.values) #Make a list of all of the columns in the df
+
+#print cols
+
+dfo=dff.reindex(['SNM', 'Instrument', 'Scan_date','Time', 'Zone', 'Duration', 'Operator', 'Resolution', 'Zero_filling_Factor', 'Number_points', 'Laser_Wavenumber', 'Wavenumber_one', 'Wavenumber_last', 'Min_absorbance', 'Max_Absorbance'], axis=1)
+#print dfo
+```
+
+```{python, echo = FALSE, output= FALSE}
+   
+############################### DROP TIME #########################################
+
+met = (metadata['Time'])  # pick time
+#print met
+
+df = pd.DataFrame(met.str.split("[)(]").tolist())  # remove parenthesis from time column values
+renam = df.rename( columns={0: "Time",1: "Zone", 2:"Empty"})
+
+dropEmpty = renam.drop(['Empty'], axis=1)
+#print dropEmpty
+
+dropTm = metadata.drop(['Time'], axis=1)
+#print dropTm
+
+dff = dropEmpty.join(dropTm,how="right", sort=True)
+#print dff
+
+cols = list(dff.columns.values) #Make a list of all of the columns in the df
+
+#print cols
+
+dfo=dff.reindex(['SNM', 'Instrument', 'Scan_date','Time', 'Zone', 'Duration', 'Operator', 'Resolution', 'Zero_filling_Factor', 'Number_points', 'Laser_Wavenumber', 'Wavenumber_one', 'Wavenumber_last', 'Min_absorbance', 'Max_Absorbance'], axis=1)
+#print dfo
+```
+
+```{python, echo = FALSE, output= FALSE}
+
+####################################Drop SNM####################################
+
+
+met=(dfo['SNM']) #pick SNM from Dataframe
+#print(met)
+
+# FUSI EDIT: Original code contained a 2 :
+#df1 = pd.DataFrame(met.str.split(';',2).tolist(),
+                                  # columns = ['SSN','Lab','Material']) 
+#This was outputing the following error: "TypeError: StringMethods.split() takes from 1 to 2 positional arguments but 3 were given"                              
+
+                                  
+df1 = pd.DataFrame(met.str.split(';').tolist(),
+                                   columns = ['SSN','Lab','Material']) #remove semicolon from SNM dataframe
+#print(df1)
+
+dropSNM=dfo.drop(['SNM'], axis=1) #Drop SNM from original dataframe
+
+#print(dropSNM)
+
+jn=df1.join(dropSNM, lsuffix='Instrument', rsuffix='dropSNM') #Join  edited datframe with new columns of snm
+
+# Get absorbances and wavenumbers
+
+wavenumbers = data.x
+
+# Generate some random data
+y = (np.random.random(10) - 0.5).cumsum()
+x = np.arange(y.size)
+
+# Interpolate the data using a cubic spline to "new_length" samples
+icraf_htsxt = [3578, 7497.964, 599.76]
+icraf_kbr = [2542, 3998.12872, 399.387991]
+icraf_znse = [1714, 3996.4, 499.9]
+icraf_mpa = [2307, 12493.2, 3598.69]
+icraf_alpha_II = [1703,3996.0, 499.2]
+icraf_invenio = [4839,7497.77, 598.95]
+CO2_band = [2350.8,2379.8]# this is a range Alpha II
+
+# The standardized wavenumbers are:
+if metadata1[0][1] == 'MPA':new_wavenumbers = np.linspace(icraf_mpa[1], icraf_mpa[2], icraf_mpa[0])
+elif metadata1[0][1] == 'TENSOR 27':new_wavenumbers = np.linspace(icraf_htsxt[1], icraf_htsxt[2], icraf_htsxt[0])
+elif metadata1[0][1] == 'Tensor 27':new_wavenumbers = np.linspace(icraf_htsxt[1], icraf_htsxt[2], icraf_htsxt[0])
+elif metadata1[0][1] == 'Invenio-S':new_wavenumbers = np.linspace(icraf_invenio[1], icraf_invenio[2], icraf_invenio[0])
+elif metadata1[0][1] == 'Alpha II':new_wavenumbers = np.linspace(icraf_alpha_II[1], icraf_alpha_II[2], icraf_alpha_II[0])
+elif metadata1[0][1] == 'Alpha' and int(metadata1[0][8]) > 2000:new_wavenumbers = np.linspace(icraf_kbr[1], icraf_kbr[2], icraf_kbr[0])
+else: 
+    new_wavenumbers = np.linspace(icraf_znse[1], icraf_znse[2], icraf_znse[0])
+
+if metadata1[0][1] == 'Alpha' and int(metadata1[0][8]) > 2000:metadata1[:,1] = 'Alpha_Kbr'
+elif metadata1[0][1] == 'Alpha' and int(metadata1[0][8]) < 2000:metadata1[:,1] = 'Alpha_ZnSe'
+else: metadata1[:,1] = metadata1[:,1]
+    
+# Get Absorbance
+# .maxY
+absorb=[]
+repl = None
+for f in file_list:
+    data = opusFC.getOpusData(f,dbs[0])
+    new_data = sp.interpolate.interp1d(wavenumbers, data.y, kind='cubic',fill_value=None, bounds_error=False)(new_wavenumbers)
+    absorb.append(new_data)
+
+new_wavenumbers = np.round(new_wavenumbers,1)
+
+spectra = pd.DataFrame(absorb, columns= new_wavenumbers)
+
+speclib = pd.concat([jn.reset_index(drop=True), spectra], axis=1)
+
+
+# write speclib to a csv file
+speclib.to_csv('Raw_spectra.csv', index= False)
+```
+
+\pagebreak
+
+# Visualize raw spectra
+
+```{r, echo = FALSE,warning=FALSE}
+
+raw <- py$speclib[,-c(2:17)]
+
+# Create temporary SSNs incase there are repeat scans. The flat csv file retains the original assigned SSNs whether with repeats or not.
+
+#FUSI EDITS: commented out the following because they were producing errors 
+
+# relabel <- length(grep('TRUE',duplicated(raw[,1])))
+
+# ifelse(relabel>0, raw[,1] <- 1:nrow(raw),raw[,1] <- raw[,1])
+
+wavenumbers <- round(as.numeric(colnames(raw[,-1])),1)
+
+colnames(raw) <- c("SSN", wavenumbers)
+
+
+# FUSI EDITS: 
+# converted raw from a list to a numeric 
+raw<-as.numeric(as.character(unlist(raw)))
+
+spec.m <- melt(raw, id = "SSN")
+
+p <- ggplot(data = spec.m, aes(x = as.numeric(as.vector(variable)),y = value,group = SSN)) +
+  
+  geom_line(size = 1, alpha = 0.1, col = 'blue') +
+  
+  ggtitle("Raw MIR spectra") +
+  
+  xlim(rev(range(wavenumbers))) +
+
+  
+  ylim(range(spec.m$value)) + 
+  
+ # ylim(c(0,1.3)) +
+  
+  xlab(expression("Wavenumbers (cm)"^-1)) +
+  
+  ylab("Aborbance units") + 
+  #theme with white background
+  theme_bw() +
+  #eliminates background, gridlines, and chart border
+  theme(
+    plot.background = element_blank()
+    ,panel.grid.major = element_blank()
+    ,panel.grid.minor = element_blank()
+  )
+p <- p + theme(plot.title = element_text(hjust = 0.5))
+
+p <- p + theme(legend.position = "none")
+
+p <- p + theme(panel.background = element_rect(fill = "white"))
+
+p
+#colour = "grey50"
+```
+
+\pagebreak
+
+## Project converted spectra into a PCA
+
+```{r, echo = FALSE,warning=FALSE}
+
+# Preprocess the raw spectra
+
+# Calculate derivatives
+k <- ncol(raw)
+
+sg <- savitzkyGolay(raw[,-c(1:2,k)], p = 2, w = 21, m = 1)
+
+#write.csv(sg, file = 'Savitizky_Golay_der_1.csv', row.names = FALSE)
+
+#psg <- read.csv('Savitizky_Golay_der_1.csv')
+
+SSN <- as.vector(raw[,1])
+
+pcs <- prcomp(sg)
+
+scores <- pcs$x[,1:4]
+
+var <- round(summary(pcs)$importance[2,] * 100, 1)
+
+write.csv(scores, file = "scores.csv", row.names = FALSE)
+
+scores <-  read.csv("scores.csv")
+#sp <- sp +  labs(color = "set")
+sp <- ggplot(scores, aes(x = PC1, y =PC2)) +
+
+geom_point(size = 1.5, alpha = 0.35, col = "black") +
+ 
+ggtitle("PCA scores plot") +
+  
+      
+    xlab(paste0("PC1 explains ", var[1], "% total variance")) +
+  
+    ylab(paste0("PC2 explains ", var[2], "% total variance")) +
+
+    theme_bw() +
+
+    theme(
+        plot.background = element_blank()
+        ,panel.grid.major = element_blank()
+        ,panel.grid.minor = element_blank()
+    )
+sp <- sp + theme(plot.title = element_text(hjust = 0.5))
+
+sp
+```
+
+\pagebreak
+
+## Show output from the conversion which contains measurement metadata and spectral points:
+
+### Spectrum metadata is upto column 17:
+
+```{r, echo = FALSE, warning=FALSE}
+suppressMessages(library(data.table))
+out <- py$speclib[1:6,c(1:7)]
+data.table(out)
+```
+
+### Spectrum absorbances begins from column 18:
+
+```{r, echo = FALSE, warning=FALSE}
+suppressMessages(library(data.table))
+#o <- which(scores[,3]>0.1 | scores[,2] < -0.18)
+out <- py$speclib[1:6,c(1,18:24)]
+data.table(out)
+```
