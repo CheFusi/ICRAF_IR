@@ -8,11 +8,59 @@ date: "2023-07-30"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## OBJECTIVE of SCRIPT
+
+-   To determine which samples (based on the spectra you have) should be analyzed for wet chem.
+
+-   \*\* won't be used much for
+
 ### Kennard Stone Selection
 
-TO DO
+Summary of algorithm: [This](https://nirpyresearch.com/kennard-stone-algorithm/) provides a brief enough explanation
 
--   Read about the principles of KS selection
+-   <div>
+
+    ## **The principle of the Kennard-Stone algorithm**
+
+    </div>
+
+    Let\'s introduce the KS algorithm as we might apply it to a spectroscopy experiment. The method is more general (it can be applied to data of any kind of data, in a generic machine learning model development) but we\'ll ignore other cases to keep with the spirit of this blog.
+
+    Suppose you have collected �[N]{.underline} spectra and you want to select a subset �<�[n]{.underline}\<[N]{.underline} spectra for the calibration set. The KS algorithm provides a principled way to make this choice.
+
+    The **first principle** is that the spectra are assigned to the test set sequentially.
+
+    The **second principle** is that we require the �[n]{.underline} spectra to be \"uniformly\" spaced over the entire dataset, including having spectra at the boundary of this dataset. The term \"uniformly spaced\" requires defining the notion of a **distance between spectra**, so that the principle of uniformly spaced spectra is actually meaningful.
+
+    ### DEFINING THE DISTANCE METRIC
+
+    The distance metric chosen in the KS algorithm is the Euclidean distance (we talked about Euclidean distance in this blog before, for instance when defining the [PCA correlation circle](https://nirpyresearch.com/pca-correlation-circle/), or in comparison with the [Mahalanobis distance for outliers detection](https://nirpyresearch.com/detecting-outliers-using-mahalanobis-distance-pca-python/)). The squared Euclidean distance between the spectrum �[i]{.underline} and the spectrum �[j]{.underline} is
+
+     ���2=∑�=1�(���−��� )2[Dij]{.underline}2​=∑[k]{.underline}=1[K]{.underline}​([xik]{.underline}​−[xjk]{.underline}​ )2
+
+    where �=1,...,�[k]{.underline}=1,\...,[K]{.underline} is an index denoting the wavelength band, �[K]{.underline} is the maximum number of wavelength in our spectra, and the symbol ∑∑ indicates sum over the wavelength bands. The distance is usually squared so that we will be dealing with positive quantities and the order in which we chose the spectra doesn\'t matter (in other words ���2=���2[Dij]{.underline}2​=[Dji]{.underline}2​).
+
+    ### KENNARD-STONE ALGORITHM SEQUENCE
+
+    Now that the important definitions are explained, we are ready to describe the algorithm sequence.
+
+    1.  The first step is to choose two starting point for the test set. This is accomplished by choosing the two spectra which have the largest distance between them (out of all possible pairs of spectra). Note that this step ensures we choose spectra at the boundary of the dataset.
+
+    2.  Any subsequent spectrum is added by computing the distance of a candidate spectrum for the spectra already selected, and requiring this distance to be the largest. In other words the next spectrum in the test set is the one that has the largest separation from the spectra already selected.  This is the part that is usually a bit complicated to explain: the distance of a spectrum from a set of spectra is the minimal distance from each of the spectra in the set. Therefore the next spectrum is chosen as the one whose minimal distance from the already-chosen spectra is the largest available.
+
+    This latest point is probably better explained with a diagram.\
+    ![](https://nirpyresearch.com/wp-content/uploads/2022/09/distance-criterion-kennard-stone-algorithm.png){alt=""}\
+    Suppose the two red points have been already selected in the test set. The next point to be added has to be chosen between two candidate points: A and B. For each of the candidate points, we calculate the minimal distance between the point and the test set. The two minimal distances are marked with an arrow. Out of the two, we chose the largest, which in this case is the one marked in red. Therefore the next point to be added to the test set is A.
+
+    The sequential process of adding point is stopped when we reach a set number of points (i.e. a specified size of the test set) decided beforehand.
+
+    This is the gist of the Kennard-Stone algorithm.
+
+QUESTIONS
+
+-   why is k=30 used here; how is this value determined
+
+-   I don't fully understand how then you relate this data here with the data split in the PLS or RF algorithms. Because now, only a portion of the data has associated wet chem data - so is it only these data that are then again split into the calibration and validation set?
 
 ```{r}
 #read your spectral data

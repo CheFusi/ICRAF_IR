@@ -12,6 +12,12 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Reference data = wet chemistry data of the full 100 samples (being used to develop the model)
 
+QUESTION:
+
+-   assuming the file spectral data is reading is referring to the selected samples from section 03?
+
+-   or which method of splitting calibration and training data is used? KS or the random setseed123 used later in this script?
+
 ```{r}
 library(dplyr)
 library(prospectr)
@@ -23,6 +29,7 @@ setwd("/Users/vkarari/Library/CloudStorage/OneDrive-CGIAR/Documents/0All_Trainin
 
 #FUSI EDIT
 #The file being uploaded here is lilely just the cleaned spectra on the 100 biochars (since they have the reference data that is being refernced later)
+
 spectraldata=read.csv("/Users/vkarari/Library/CloudStorage/OneDrive-CGIAR/Documents/0All_Training/SA_ARC_Physical_Training_Aug-Sept22/ARC-MIR/ARC-MIR.csv")
 rownames(spectraldata)<-spectraldata$SSN
 

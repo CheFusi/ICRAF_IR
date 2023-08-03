@@ -59,6 +59,8 @@ To run the script provide a full path name with the opus files to be converted i
 
 \pagebreak
 
+\
+
 ## Code used:
 
 This can be accessed from [a.sila\@cgiar.org](mailto:a.sila@cgiar.org){.email}
@@ -87,7 +89,8 @@ import numpy as np
 
 # Change current working directory to where OPUS files are stored in your computer
 
-os.chdir("/Users/soliverchefusi/Library/CloudStorage/OneDrive-Personal/R/ICRAF&Lehmann/ICRAF_IR/ICRAF_IR_R_Project/Test_Spectra/Test_369.GGSM _fter_Incubation.ZnSe")
+os.chdir("/Users/soliverchefusi/Library/CloudStorage/OneDrive-Personal/R/ICRAF&Lehmann/ICRAF_IR/ICRAF_IR_R_Project/ICRAF_IR/Test_Spectra/Test_369.GGSM _fter_Incubation.ZnSe")
+
 # Check currect working directory
 
 cwd = os.getcwd()
@@ -212,7 +215,11 @@ met=(dfo['SNM']) #pick SNM from Dataframe
 
 met = met.str.replace(';;',';')
 
-df1 = pd.DataFrame(met.str.split(';',2).tolist(),
+#FUSI EDITS: removed the 2 
+#original code was: df1 = pd.DataFrame(met.str.split(';',2).tolist(),
+                                   #columns = ['SSN','Lab','Material']) #remove semicolon from SNM dataframe
+
+df1 = pd.DataFrame(met.str.split(';').tolist(),
                                    columns = ['SSN','Lab','Material']) #remove semicolon from SNM dataframe
 #print(df1)
 
