@@ -1,0 +1,232 @@
+---
+title: "Neural_Network_Trial"
+output: html_document
+date: "2023-08-22"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Loading Libraries
+
+```{r}
+library(tensorflow)
+library(keras)
+library(neuralnet)
+library(pracma)
+library(matlib)
+```
+
+Training Function
+
+-   Levenberg--Marquardt algorithm
+
+    -   Implementation in R- General:
+
+        -   <https://anderfernandez.com/en/blog/how-to-code-a-neural-network-from-scratch-in-r/#:~:text=Back%20propagation%3A%20once%20we%20get,the%20neurons%20for%20all%20layers.>
+
+        -   <https://www.r-bloggers.com/2018/10/how-to-build-your-own-neural-network-from-scratch-in-r/>
+
+    -   Implementation in R - LM
+
+        -   <https://stackoverflow.com/questions/66759483/implement-levenberg-marquardt-algorithm-in-r>
+
+    -   Background: <https://en.m.wikipedia.org/wiki/Levenberg%E2%80%93Marquardt_algorithm>
+
+    -   Continue searching for biochar work using LM: <https://www.google.com/search?q=Levenberg-Marquardt+Backpropagation+T+biochar&rlz=1C5MACD_enUS1035US1035&oq=Levenberg-Marquardt+Backpropagation+T+biochar+&aqs=chrome..69i57.2699j0j4&sourceid=chrome&ie=UTF-8>
+
+NN implementation in R
+
+-   <https://www.youtube.com/watch?v=Ut647c_aZoc>
+-   <https://www.youtube.com/watch?v=4fNaBmNl6Og>
+
+Questions
+
+1.  How do you determine the number of input and output nodes for something like the spectral data + all the reference variables
+
+Notes
+
+-   keras_model_sequential: <https://cran.r-project.org/web/packages/keras/vignettes/sequential_model.html>
+
+<!-- -->
+
+-   The training function is **the overall algorithm that is used to train the neural network to recognize a certain input and map it to an output**.
+
+-   output function ( usually has a squashing function used to keep the output function within certain bounds)
+
+![](https://www.researchgate.net/publication/351222802/figure/fig2/AS:1023213119229952@1620964426667/llustrates-the-activation-function-for-process-learning-The-first-process-is-to-accept.png){alt="illustrates the activation function for process learning. The first... |  Download Scientific Diagram" width="343"}
+
+```{r}
+
+library(ISLR2)
+
+Glitters<-na.omit(Hitters)
+n<- nrow(Glitters)
+set.seed(13)
+ntest <-trunc(n/3)
+testid<-sample(1:n, ntest)
+
+x<- scale(model.matrix(Salary~.-1, data=Glitters))
+y<-Glitters$Salary
+
+rm(modnn)
+modnn <- keras_model_sequential() |>
+    layer_dense(units = 50, activation = "relu", input_shape=c(ncol(x))) |> 
+   # layer_dropout(rate=0.4) %>%
+  #layer_dense(units = 10, activation = "sigmoid") |> 
+    layer_dense(units = 1) #, activation = "softmax") 
+summary(modnn)
+
+modnn %>% compile(
+  optimizer = optimizer_rmsprop(), 
+  loss = 'mse',
+  metrics = list('mean_absolute_error')
+)
+
+history_2<-modnn%>% fit(
+    x=x[-testid,],
+    y=y[-testid],
+    epochs = 60,
+    batch_size=32,
+    validation_data = list(x[testid,],y[testid])) 
+    # What size should the model break up the data into?
+    #batch_size = 128)
+plot(history_2)
+
+```
+
+Neural Network Specs
+
+-   keras_model - stores details of what the model will look like
+
+-   keras_model_sequential: [feed forward neural network](https://deepai.org/machine-learning-glossary-and-terms/feed-forward-neural-network)
+
+-   layer_dense(units = 1200) : number of neurons in the first hidden layer. Suggested [here](https://medium.com/geekculture/introduction-to-neural-network-2f8b8221fbd3#:~:text=Number%20of%20Neurons%20and%20Number%20of%20Layers%20in%20Hidden%20Layer&text=The%20number%20of%20hidden%20neurons,size%20of%20the%20output%20layer.) to be 2/3 the input + output layer
+
+-   layer_dense(units = 1) : number of neurons in the output layer. Since we have a regression (quantitative), this requires one unit/neuron
+
+```{r}
+
+
+names(df.f)
+slprptr<-names(df.f)#[c(1:5,9:23)]
+
+pred<-as.data.frame(spec_trt[,1])
+colnames(pred)<-"SSN"
+
+mdl.stats<-NULL#Model stats container
+
+#FUSI EDIT: started at 3, instead of 2 because the first column in the char type
+for(p in 47:48){
+#for(p in 4:length(slprptr)){
+  
+   
+#Select properties to predict one at a time and remove NAs  
+df.sel<-df.f %>% select(SSN, slprptr[p]) %>% na.omit
+
+
+#Plot and print soil properties boxplots
+boxplot(df.sel[,slprptr[p]], las=2, xlab = slprptr[p], ylab = "")
+dir.create("Plots_Boxplots")
+png(paste0(getwd(),"/Plots_Boxplots/",slprptr[p],".png"))
+print(boxplot(df.sel[,slprptr[p]], las=2, xlab = slprptr[p], ylab = ""))
+dev.off()
+
+# #Split samples inside loop for variables with many NAs
+# #Set splitting proportion for the calibration and validation data
+# set.seed(123)
+# pool=df.f[sample(nrow(df.sel), round(0.2*nrow(df.sel),0)), ]
+# pool<-pool[order(pool$SSN),]
+# poolid<-pool$SSN
+
+
+#Get calibration and validation datasets
+val_df<-pool
+cal_df1 <-subset(df.sel, !(df.sel$SSN %in% val_df$SSN))
+
+# threshold to exclude the extreme 5% values
+#KARARI UPDATE; 95% loses too many samples, changed to 99% 
+
+cal_df <-subset(cal_df1, cal_df1[,2]>quantile(cal_df1[,2], 0.01)&cal_df1[,2] <quantile(cal_df1[,2], 0.99))
+val_df1 <-subset(df.sel, (df.sel$SSN %in% val_df$SSN))
+val_df <-subset(val_df1, val_df1[,2]>quantile(val_df1[,2], 0.01)&val_df1[,2] <quantile(val_df1[,2], 0.99))
+#FUSI EDIT: first chunk is initial code - for some reason wasn't actually orering the dataframe. second chunk is my edit
+#renames the non-working version with suffice _or
+val_df<-val_df[order(rownames(val_df)),]
+cal_df<-cal_df[order(rownames(cal_df)),]
+
+#val_df_or<-setorder(val_df)
+#cal_df_or<-setorder(cal_df)
+
+#Subset pre-treated spectra by available reference data
+val_spec<-spec_trt[is.element(spec_trt$SSN, val_df$SSN),]
+cal_spec<-spec_trt[is.element(spec_trt$SSN, cal_df$SSN),]
+cal_spec<-cal_spec[order(cal_spec$SSN),]
+val_spec<-val_spec[order(val_spec$SSN),]
+
+
+#Get no of calibration and validation datasets
+N_cal<-nrow(cal_spec)
+N_val<-nrow(val_spec)
+
+#Model data
+Xcal.f=cal_spec[,-1]
+Xval.f=val_spec[,-1]
+dfcal.f=cal_df[,-1]
+dfval.f=val_df[,-1]
+}
+
+rm(first_model)
+
+first_model <- keras_model_sequential() |>
+    layer_dense(units = 1200, activation = "relu", input_shape=c(ncol(Xcal.f))) |> 
+    layer_dense(units = 1) #, activation = "softmax") 
+summary(first_model)
+
+#transmits to python
+first_model %>% compile(
+  optimizer = "rmsprop", #optimizer_rmsprop(), #default
+  loss = 'mse',
+  metrics = list('mean_absolute_error')
+)
+
+x_2<- (model.matrix(SSN~.-1, data=cal_spec))
+x_3<- (model.matrix(SSN~.-1, data=val_spec))
+
+
+history<-fit(first_model,
+    x= x_2, #cal_spec[,-1],
+    y=dfcal.f,
+    epochs = 100,
+    # What size should the model break up the data into?
+    batch_size = 100,
+    validation_data = list(x_3, dfval.f))
+
+plot(history)
+
+#} 
+```
+
+Reference code:
+
+-   <https://github.com/brandonyph/MLP-Animation/tree/main>
+
+```{r}
+weight_mod <- list()
+bias_mod <- list()
+model_stat <- list()
+Overall <- list()
+acc <- list()
+
+weight_mod<- as.matrix(first_model$layers[[2]]$weights[[1]])
+bias_mod<- as.matrix(first_model$layers[[2]]$weights[[2]])
+
+  model_stat$weight <- weight_mod
+  model_stat$bias <- bias_mod
+  
+  Overall[[1]] <- model_stat
+  acc[[1]] <- first_model$history$history$accuracy
+
+
+```
