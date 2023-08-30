@@ -392,6 +392,10 @@ nwraw0 <- raw0[,c(1,3:length(raw0))]
 #SavitzkyGolay pretreatment
 #FUSI NOTES: Takes the first derivative and smooths the spectra
 
+#often used as a preliminary preprocessing step to resolve overlapping signals, enhance signal properties, and suppress unwanted spectral features that arise due to nonideal instrument and sample properties."
+
+
+
 spec_der<-as.data.frame(savitzkyGolay(nwraw0[,-1], w=17, p=2, m=1))
 
 #Mean-centering function
@@ -405,6 +409,39 @@ spec_der.mc_trt<-center_colmeans(spec_der)
 
 spec_trt<-bind_cols(SSN=nwraw0$SSN,spec_der.mc_trt)
  
+```
+
+### Plot of pretreted spectral
+
+```{r}
+
+spec_pretreat <- melt(as.data.frame(spec_trt), id="SSN")
+
+plot_pretreat <- ggplot(data = spec_pretreat, aes(x = variable,y = value,group = SSN)) +
+  #as.numeric(as.vector(
+  geom_line(size = 0.5, alpha = 0.1, col = 'brown') +
+  
+  ggtitle(strsplit(flnm,".csv")[[1]][1]) +
+  
+ # xlim(rev(range(as.numeric(as.vector(spec_trt$variable))))) +
+  
+  #note that the variable column refers to the wavenumber and the value column to the absorbance
+ # ylim(range(spec_trt$value)) + 
+  
+  # ylim(c(0,1.3)) +
+  
+  xlab(expression("Wavenumbers (cm)"^-1)) +
+  
+  ylab("Mean-Centered Derivative of Aborbance") + 
+  #theme with white background
+  theme_bw() +
+  #eliminates background, gridlines, and chart border
+  theme(
+    plot.background = element_blank()
+    ,panel.grid.major = element_blank()
+    ,panel.grid.minor = element_blank()
+  )
+plot_pretreat
 ```
 
 ### PCA Plots
@@ -555,17 +592,19 @@ library(ggplot2)
 #Read reference data
 df1=read.csv("IR_Dependent_Variables_All.csv")#, skip=5)#[,c(1,8:29)]
 colnames(df1)[1]<-"SSN"
+colnames(df1)[3]<-"char_type"
 
 #FUSI EDIT: put this cleanup chunk earlier to then filter out the columns where there isn't enough data, and then be able to define  slprptr based on the cleaned data 
 # 
 
 # #Remove unwanted characters in the dataa
 # df.f[sapply(df.f, grepl, pattern = "<")] <- "NA"
-dnmrc <- df1[,-1] %>% mutate_if(is.character, as.numeric)
-df1 <- bind_cols(SSN = df1[,1],dnmrc)
+dnmrc <- df1[,-c(1:3)] %>% mutate_if(is.character, as.numeric)
+df1 <- bind_cols(df1[,c(1:3)],dnmrc)
 
 #FUSI EDIT - errors out becauseo of duplicated? REVISIT
 #Revisited - added back after selecting only the samples with ref data 
+#KARARI
 
 #rownames(df1)<-df1$SSN
 
@@ -602,6 +641,7 @@ spectraldata<- raw0
 df.f<-df1[is.element(df1$SSN, spectraldata$SSN),]
 
 #FUSI EDIT
+#KARARI
 rownames(df.f)<-df.f$SSN
 
 #FUSI EDIT: put this cleanup chunk earlier to then filter out the columns where there isn't enough data, and then be able to define  slprptr based on the cleaned data 
@@ -661,9 +701,10 @@ library(ithir)
 
 #FUSI EDIT 
 # changed the call to reference df.f and not df1 because df.f has columns removed for samples that don't have enough data 
+# also removed the columns for char and char type
 
 names(df.f)
-slprptr<-names(df.f)#[c(1:5,9:23)]
+slprptr<-names(df.f[-c(2:3)])
 
 pred<-as.data.frame(spec_trt[,1])
 colnames(pred)<-"SSN"
@@ -1034,12 +1075,6 @@ getwd()
 
 ```
 
-```{r}
-
-
-
-```
-
 ### Grouping Reference Data
 
 Grouping reference data by temperature
@@ -1078,19 +1113,232 @@ df.f$H_C_factor<-as.factor(df.f$H_C_factor)
 df.f_split<-split(df.f,df.f$Temp_factor)
 ```
 
+## PLSR per Temperature 
+
 ```{r}
+
+#Available properties to predict
+#Incase you want to predict only selected properties,
+#get property position by running line 66. Remove hash sign between ")" and "["
+#symbols on line 67. Edit properties position and run line 67.
+#Always ensure position 1 in always included.
+
+
+ #select only the common soil samples in spectral and wet chemie data
+#df.f<-df1[is.element(df1$SSN, spectraldata$SSN),]
+
+spectraldata <-spec_trt
+df.f<-df.f_split[[1]][is.element(df.f_split[[1]]$SSN, spectraldata$SSN),]
+
+
+
+#FUSI EDIT
+#KARARI
+rownames(df.f)<-df.f$SSN
+
+#FUSI EDIT: put this cleanup chunk earlier to then filter out the columns where there isn't enough data, and then be able to define  slprptr based on the cleaned data 
+# 
+# # #Remove unwanted characters in the dataa
+# # df.f[sapply(df.f, grepl, pattern = "<")] <- "NA"
+# dnmrc <- df.f[,-1] %>% mutate_if(is.character, as.numeric)
+# df.f <- bind_cols(SSN = df.f[,1],dnmrc)
+
+#FUSI EDIT: 
+#filtering and removing the columns (reference variables) where more than 70% of data is missing/NA
+
+threshold_na <- 0.65 #for a 70% cut-off
+
+df.f<-
+  df.f %>% select(where(~mean(is.na(.)) < threshold_na))
+
+spectraldata.fin<-spectraldata[is.element(spectraldata$SSN, df.f$SSN),]
+
 #Set splitting proportion for the calibration and validation data
 set.seed(123)
-
-pool=df.f_split[sample(nrow(df.f_split), round(0.3*nrow(df.f_split),0)), ]
-
-trial<- df.f_split%>%
-  lapply(sample(lapply(df.f_split,nrow)), 30,0)
-
- lapply(df.f_split,sample(NROW, 1,1))
-
+pool=df.f[sample(nrow(df.f), round(0.3*nrow(df.f),0)), ]
 pool<-pool[order(pool$SSN),]
-poolid<-pool$SSN 
+poolid<-pool$SSN  
+
+#FUSI EDIT 
+# changed the call to reference df.f and not df1 because df.f has columns removed for samples that don't have enough data 
+# also removed the columns for char and char type
+
+names(df.f_split[[1]])
+slprptr<-names(df.f[-c(2:3)])
+
+pred<-as.data.frame(spec_trt[,1])
+colnames(pred)<-"SSN"
+
+mdl.stats<-NULL#Model stats container
+
+#FUSI EDIT: started at 3, instead of 2 because the first column in the char type
+for(p in 4:length(slprptr)){
+
+  
+#Select properties to predict one at a time and remove NAs  
+df.sel<-df.f %>% select(SSN, slprptr[p]) %>% na.omit
+
+
+#Plot and print soil properties boxplots
+boxplot(df.sel[,slprptr[p]], las=2, xlab = slprptr[p], ylab = "")
+dir.create("Plots_Boxplots")
+png(paste0(getwd(),"/Plots_Boxplots/",slprptr[p],".png"))
+print(boxplot(df.sel[,slprptr[p]], las=2, xlab = slprptr[p], ylab = ""))
+dev.off()
+
+# #Split samples inside loop for variables with many NAs
+# #Set splitting proportion for the calibration and validation data
+# set.seed(123)
+# pool=df.f[sample(nrow(df.sel), round(0.2*nrow(df.sel),0)), ]
+# pool<-pool[order(pool$SSN),]
+# poolid<-pool$SSN
+
+
+#Get calibration and validation datasets
+val_df<-pool
+cal_df1 <-subset(df.sel, !(df.sel$SSN %in% val_df$SSN))
+
+# threshold to exclude the extreme 5% values
+#KARARI UPDATE; 95% loses too many samples, changed to 99% 
+
+cal_df <-subset(cal_df1, cal_df1[,2]>quantile(cal_df1[,2], 0.01)&cal_df1[,2] <quantile(cal_df1[,2], 0.99))
+val_df1 <-subset(df.sel, (df.sel$SSN %in% val_df$SSN))
+val_df <-subset(val_df1, val_df1[,2]>quantile(val_df1[,2], 0.01)&val_df1[,2] <quantile(val_df1[,2], 0.99))
+#FUSI EDIT: first chunk is initial code - for some reason wasn't actually orering the dataframe. second chunk is my edit
+#renames the non-working version with suffice _or
+val_df_or<-val_df[order(rownames(val_df)),]
+cal_df_or<-cal_df[order(rownames(cal_df)),]
+
+val_df<-setorder(val_df)
+cal_df<-setorder(cal_df)
+
+#Subset pre-treated spectra by available reference data
+val_spec<-spec_trt[is.element(spec_trt$SSN, val_df$SSN),]
+cal_spec<-spec_trt[is.element(spec_trt$SSN, cal_df$SSN),]
+cal_spec<-cal_spec[order(cal_spec$SSN),]
+val_spec<-val_spec[order(val_spec$SSN),]
+
+
+#Get no of calibration and validation datasets
+N_cal<-nrow(cal_spec)
+N_val<-nrow(val_spec)
+
+#Model data
+Xcal.f=cal_spec[,-1]
+Xval.f=val_spec[,-1]
+dfcal.f=cal_df[,-1]
+dfval.f=val_df[,-1]
+
+###### PLSR SOC
+maxc <- 5  ## number of max components
+#FUSI EDIT: max was 25
+pls.md <- plsr(dfcal.f ~ ., data = Xcal.f, maxc, validation = "CV", segments = 3)#10-fold CV
+
+## plot RMSEP vs. number of components
+plot(pls.md, "val", main=slprptr[p]) 
+
+dir.create("Components_plots")
+png(paste0(getwd(),"/Components_plots/",slprptr[p],".png"))
+print(plot(pls.md, "val", main=slprptr[p]))
+dev.off()
+
+## no. components to use, the one with the smallest adj RMSEP value
+RMSEP.obj<-RMSEP(pls.md)
+str(RMSEP.obj)
+
+RMSEP.obj$val[1:2,1,]
+nc <- as.numeric(sub("comps", "", names(which.min(RMSEP.obj$val[1,1,2:dim(RMSEP.obj$val[1:2,1,])[2]]))))
+nc
+
+#Generate relevant model name
+md.nm<-paste0("pls.md.", slprptr[p], ".nc", nc)
+
+#Rename model with the looped soil property
+assign(x = md.nm, value = get("pls.md", pos = .GlobalEnv), pos = .GlobalEnv)
+
+## predict to validation dataset
+pls.prd <- predict(pls.md, ncomp = nc, newdata = Xval.f)
+
+## Return prediction statistics
+val.stats=round(goof(dfval.f, pls.prd, type = "spec"),3)
+val.stats<-bind_cols(Property=paste0(Property=slprptr[p],"_val"), Comps="", N=N_val, val.stats)
+val.stats
+
+## calibration statistics
+pls.pc <- predict(pls.md, ncomp = nc, newdata = Xcal.f)
+
+pls.cal=round(goof(dfcal.f, pls.pc, type = "spec"),3)
+cal.stats<-bind_cols(Property=paste0(Property=slprptr[p],"_cal"), Comps=as.character(nc), N=N_cal, pls.cal)
+cal.stats
+
+################### Get model statistics #########################
+mdstats<-bind_rows(cal.stats, val.stats)
+
+#Create model stats labels for the plot
+#FUSI EDIT: Removed comps from before N because plot was crowded should add back in and only remove in plot below 
+slct.stats<-as.data.frame(t(mdstats[,c("Property","N","R2","RMSE","bias","RPIQ" )]))
+names(slct.stats)<-NULL
+slct.stats<-bind_cols(rownames(slct.stats),slct.stats[,2])
+
+#FUSI EDIT: added "comps" because it is in slct.stats 
+valbls<-paste0(c("N","R2","RMSE","bias","RPIQ"), "\n")
+valsts<-paste0(c(slct.stats[2,2],slct.stats[3,2],slct.stats[4,2],slct.stats[5,2],slct.stats[6,2]))
+valstats<-paste(valbls,valsts)
+
+#Bind all looped properties model stats
+mdl.stats<-bind_rows(mdl.stats,mdstats)
+
+
+lgth<-length(sort(dfval.f,decreasing=F))
+
+seq.int(sort(dfval.f,decreasing=F)[1], sort(dfval.f,decreasing=F)[lgth],length.out=4)
+
+#Plot validation plot
+plot(dfval.f,pls.prd,pch=10,
+     xlab=paste('Measured',names(val_df)[2],sep="_"),
+     ylab=paste('Predicted',names(val_df)[2],sep="_"), 
+     xlim = range(c(dfval.f,pls.prd)),
+     ylim = range(c(dfval.f,pls.prd)),
+     mtext(valstats[-1],side=3, at=c(seq.int(sort(dfval.f,decreasing=F)[1], sort(dfval.f,decreasing=F)[lgth],length.out=4)))
+     )   ## plot the predicted vs. measured in the validation
+abline(a = 0, b = 1)
+
+
+dir.create("Plots_Validationplots")
+png(paste0(getwd(),"/Plots_Validationplots/",slprptr[p],".png"))
+print(plot(dfval.f,pls.prd,pch=10,
+           xlab=paste('Measured',names(val_df)[2],sep="_"),
+           ylab=paste('Predicted',names(val_df)[2],sep="_"), 
+           xlim = range(c(dfval.f,pls.prd)),
+           ylim = range(c(dfval.f,pls.prd)),
+           mtext(valstats[-1],side=3, at=c(seq.int(sort(dfval.f,decreasing=F)[1], sort(dfval.f,decreasing=F)[lgth],length.out=4)))
+           ))
+abline(a = 0, b = 1)
+dev.off()
+
+
+################### Predict all samples #########################
+#prd.smpls <- predict(pls.md, spec_trt[,-1])
+
+#FUSI EDIT
+prd.smpls <- predict(pls.md, spec_trt[,-1])
+
+prd<-as.data.frame(prd.smpls)
+df.prd<-bind_cols(SSN=rownames(prd),prd[,nc])
+colnames(df.prd)<-c("SSN",slprptr[p])
+
+pred<-merge(pred, df.prd, by="SSN", all.x = T)
+}
+#FUSI EDIT: End of for loop
+
+
+#Remove the least reliably predicted texture data (Clay,Sand or Silt)
+#Recalculate the removed texture data to make Clay+Sand+Silt=100% content
+
+#Write model statistics and predicted values to the local drive
+write.csv(mdl.stats, paste0(getwd(),"/Model_Statistics_PLSR_Temp_1.csv"),row.names = F)
+write.csv(pred, paste0(getwd(),"/Predicted_Soil_Properties_Temp_1.csv"),row.names = F)
+getwd()
 ```
 
 ## PCA with Reference Data for Grouping
@@ -1153,82 +1401,102 @@ g1
 
 ```
 
+## Correlation Matrices
+
+help from the following [link](http://www.sthda.com/english/wiki/correlation-matrix-a-quick-start-guide-to-analyze-format-and-visualize-a-correlation-matrix-using-r-software)\
+
+```{r, message=FALSE}
+library(Hmisc)
+library(PerformanceAnalytics)
+library(gplots)
+library(plotly)
+```
+
+### Hierrchical Clustering
+
+```{r}
+df.f$Temp.<-as.numeric(df.f$Temp.)
+#df.f[,-1]<-as.numeric(unlist((df.f[,-1]))
+cor_mat<-rcorr(as.matrix(df.f[,c(2:ncol(df.f))]))
+cor_mat
+
+
+#Hierrchical Clustering
+cor_mat_data<-df.f[,2:(ncol(df.f)-2)]
+
+cor_mat_2<-cor(cor_mat_data, use = "pairwise.complete.obs")
+#calculates correlations pairwise between variables while excluding observations that have missing values in either of the two variables being correlated
+
+Hierchical_cluster<-heatmap.2(cor_mat_2, 
+          #col = colorRampPalette(c("blue", "white", "red"))(50), 
+          dendrogram = "both",
+          trace = "none",
+          #margins = c(10, 10),
+          main = "Correlation Heatmap")
+Hierchical_cluster
+
+```
+
+### Interactive Heatmap
+
+```{r}
+
+heatmap_interactive <- plot_ly(
+  x = colnames(cor_mat_2),
+  y = colnames(cor_mat_2),
+  z = cor_mat_2,
+  type = "heatmap",
+  colorscale = "Viridis"
+)
+heatmap_interactive
+
+```
+
+```{r}
+
+filtered_cor_mat <- cor_mat_2
+filtered_cor_mat[filtered_cor_mat > -0.75 & filtered_cor_mat <0.75] <- NA
+
+
+#filtered_cor_mat[filtered_cor_mat < 0.75 | filtered_cor_mat > 0.99] <- NA
+
+heatmap_interactive_2 <- plot_ly(
+  x = colnames(filtered_cor_mat),
+  y = colnames(filtered_cor_mat),
+  z = filtered_cor_mat,
+  type = "heatmap",
+  colorscale = "Viridis"
+)
+heatmap_interactive_2
+```
+
+```{r}
+
+df <- data.frame(
+  A = c(1, 2, NA, 4),
+  B = c(NA, 2, 3, 4)
+)
+
+# Remove rows containing NA values
+df_clean <- df[complete.cases(df), ]
+```
+
+```{r, warning=FALSE}
+
+corr_data<-df.f[,c(2:20)]
+chart.Correlation(corr_data)#, histogram=TRUE)
+```
+
+```{r, warning=FALSE}
+
+corr_data_1<-df.f[,c(21:40)]
+chart.Correlation(corr_data_1)#, histogram=TRUE)
+```
+
+```{r, warning=FALSE}
+
+corr_data_2<-df.f[,c(41:ncol(df.f)-2)]
+chart.Correlation(corr_data_2)#, histogram=TRUE)
+```
+
 \
-
-```{r}
-
-
-g2 <- ggbiplot::ggbiplot(pcs1, #need to specify which library the command is coming from, gives errors otherwise
-              obs.scale = 1,
-              var.scale = 1 ,
-              groups = spec_refA$H_C_factor,
-              #ellipse = TRUE,
-              ##circle = TRUE,
-              #ellipse.prob = 0.68,
-              var.axes=FALSE)
-g2
-
-
-
-
-
-```
-
-```{r}
-
-#FUSI EDIT: The original code was calib <- dim(master)[1]; but this refers to the master which as defined above is based on data used to develop the model
-# I changed it to refer to nwraw0 here because that is the data being used to develop the model
-#noting also that 'calib' has no significance to calibration here - just kept the same variable name for ease
-calib1 <- dim(spec_ref)[1]
-
-
-#calib <- dim(master)[1]
-
-points(pcss1[1:calib1,1:2], col = "red")
-
-points(pcss1[-c(1:calib1),1:2], col = "blue")
-
-var1 <- round(summary(pcs1)$importance[2,] * 100, 1)
-
-scores1 <- cbind("Calib",as.data.frame(pcs1$x[,1:5])) # get first 5 principal components
-
-names(scores1) <- c("set", colnames(scores1[,-1]))
-
-scores1 <- as.matrix(scores1)
-
-scores1[-c(1:calib1),1] <- "New samples"
-
-scores1 <- as.data.frame(scores1)
-
-write.csv(scores1, file = "./Calib and Pred scores.csv", row.names = FALSE)
-
-scores1 <- read.csv("./Calib and Pred scores.csv")
-
-#sp <- sp +  labs(color = "set")
-sp <- ggplot(scores, aes(x = PC1, y =PC2, colour = set)) +
-  
-  geom_point(size = 0.8, alpha = 0.85 ) +
-  
-  ggtitle("PCA scores plot") +
-  
-  
-  xlab(paste0("PC1 explains ", var[1], "% total variance")) +
-  
-  ylab(paste0("PC2 explains ", var[2], "% total variance")) +
-  
-  theme_bw() +
-  
-  theme(
-    plot.background = element_blank()
-    ,panel.grid.major = element_blank()
-    ,panel.grid.minor = element_blank()
-  )
-sp <- sp + theme(plot.title = element_text(hjust = 0.5))
-
-sp <- sp + scale_color_manual(values =c("brown","orange"))
-
-sp
-
-ggsave(filename  = "./Soils_scores.png", height = 6, width = 6,sp)
-  
-```

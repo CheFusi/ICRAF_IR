@@ -230,3 +230,25 @@ bias_mod<- as.matrix(first_model$layers[[2]]$weights[[2]])
 
 
 ```
+
+Notes from Bavisha
+
+-   NN's grid seach (GridSearchCV) and there is another option
+
+    -   there is a function where you can take all of the paramters you are trying to optimize e.g. activation, loss, etc..
+
+    -   creates a matrix and searches over the entire range for each parameter and gives you options for all of them that optimize
+
+    -   GridSearchCV(model, parameters to optimize)
+
+-   Test
+
+-   Confusion matrix
+
+-   For RF \_ feature importance (look into) to see if/when your data is messing up. Much simpler than PCA
+
+    -   useful for tracing errors -- in the event that your model is giving inflated predictions ... validating assumptions also
+
+-   XG boost - improved RF model
+
+-   Read: pubs.acs.org/doi/abs/10.1021/acs.est.1c01339
